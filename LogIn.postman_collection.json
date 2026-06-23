@@ -1,0 +1,302 @@
+{
+  "info": {
+    "_postman_id": "c84f03b3-d574-4b5d-8149-25c198685f30",
+    "name": "LogIn",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "31511104"
+  },
+  "item": [
+    {
+      "name": "Eino Sign In using username & password",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "",
+              "",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.environment.set(\"access_token\", pm.response.json().data.access_token);",
+              "pm.environment.set(\"refresh_token\", pm.response.json().data.refresh_token);",
+              "pm.environment.set(\"id\", pm.response.json().data.id);",
+              "pm.environment.set(\"X-Tenant-Id\", pm.response.json().data.company_id);",
+              "pm.environment.set(\"Department_id\", pm.response.json().data.department_id);",
+              "pm.environment.set(\"company_id\", pm.response.json().data.company_id);",
+              "pm.environment.set(\"department_id\", pm.response.json().data.department_id);",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "email",
+              "value": "devendrakumarnri@gmail.com",
+              "type": "text",
+              "uuid": "8fb630a1-2d33-4170-b60a-c7e07bae6a43"
+            },
+            {
+              "key": "password",
+              "value": "Eino@123",
+              "type": "text",
+              "uuid": "fbb2786a-c49a-4aed-9c32-9cc616c4946f"
+            },
+            {
+              "key": "type",
+              "value": "PASSWORD",
+              "type": "text",
+              "uuid": "93628f46-ece3-47fe-9895-4ef48e22d503"
+            },
+            {
+              "key": "browser_id",
+              "value": "53e1bed6-53e1-53e1-53e1-000053e1bed2",
+              "type": "text",
+              "uuid": "976b57e5-e66d-418f-ad89-3fdfc3a3e9f1"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseURL}}user/login/",
+          "host": [
+            "{{baseURL}}user"
+          ],
+          "path": [
+            "login",
+            ""
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Eino Sign In using PIN",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "",
+              "",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.environment.set(\"access_token\", pm.response.json().data.access_token);",
+              "pm.environment.set(\"refresh_token\", pm.response.json().data.refresh_token);",
+              "pm.environment.set(\"id\", pm.response.json().data.id);",
+              "pm.environment.set(\"X-Tenant-Id\", pm.response.json().data.company_id);",
+              "pm.environment.set(\"Department_id\", pm.response.json().data.department_id);",
+              "pm.environment.set(\"company_id\", pm.response.json().data.company_id);",
+              "pm.environment.set(\"department_id\", pm.response.json().data.department_id);",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        },
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "email",
+              "value": "devendrakumarnri@gmail.com",
+              "type": "text",
+              "uuid": "8fb630a1-2d33-4170-b60a-c7e07bae6a43"
+            },
+            {
+              "key": "password",
+              "value": "123456",
+              "type": "text",
+              "uuid": "fbb2786a-c49a-4aed-9c32-9cc616c4946f"
+            },
+            {
+              "key": "type",
+              "value": "PASSWORD_PIN",
+              "type": "text",
+              "uuid": "93628f46-ece3-47fe-9895-4ef48e22d503"
+            },
+            {
+              "key": "browser_id",
+              "value": "53e1bed6-53e1-53e1-53e1-000053e1bed2",
+              "type": "text",
+              "uuid": "976b57e5-e66d-418f-ad89-3fdfc3a3e9f1"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{baseURL}}user/login/",
+          "host": [
+            "{{baseURL}}user"
+          ],
+          "path": [
+            "login",
+            ""
+          ],
+          "query": [
+            {
+              "key": "email",
+              "value": "devendrakumarnri@gmail.com",
+              "disabled": true
+            },
+            {
+              "key": "password",
+              "value": "123456",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Change password",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{refresh_token}}",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"browser_id\": \"7ca07e35-7ca0-7ca0-7ca0-00007ca07e39\",\n    \"current_password\": \"Eino@123\",\n    \"logout_all\": true,\n    \"new_password\": \"Eino@123\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseURL}}user/change_password/",
+          "host": [
+            "{{baseURL}}user"
+          ],
+          "path": [
+            "change_password",
+            ""
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "refresh_token",
+      "value": ""
+    },
+    {
+      "key": "id",
+      "value": ""
+    }
+  ]
+}
