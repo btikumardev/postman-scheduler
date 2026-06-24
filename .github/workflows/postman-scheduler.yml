@@ -16,17 +16,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
       - name: Install Newman
         run: |
-          npm install -g newman
-          npm install -g newman-reporter-htmlextra
+          npm install -g newman newman-reporter-htmlextra
 
       - name: Create reports directory
         run: mkdir -p reports
 
       - name: Run Postman Collection
+        id: newman
         continue-on-error: true
         run: |
           newman run "LogIn.postman_collection.json" \
@@ -35,22 +35,30 @@ jobs:
             --reporter-htmlextra-export reports/report.html
 
       - name: Upload HTML Report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: postman-report
           path: reports/report.html
 
-      - name: Check Secret
+      - name: Notify Teams
+        if: always() && secrets.TEAMS_WEBHOOK_URL != ''
         run: |
-          if [ -z "${{ secrets.TEAMS_WEBHOOK_URL }}" ]; then
-            echo "EMPTY"
+          if [ "${{ steps.newman.outcome }}" = "success" ]; then
+            STATUS="✅ Passed"
+            COLOR="00FF00"
           else
-            echo "PRESENT"
+            STATUS="❌ Failed"
+            COLOR="FF0000"
           fi
 
-      - name: Notify Teams
-        if: always()
-        run: |
-          curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
-          -H "Content-Type: application/json" \
-          -d '{"text":"✅ Postman Scheduled Run Completed"}'
+          curl -f -sS -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"@type\": \"MessageCard\",
+              \"@context\": \"http://schema.org/extensions\",
+              \"summary\": \"Postman Run\",
+              \"themeColor\": \"${COLOR}\",
+              \"title\": \"Postman Scheduled Run\",
+              \"text\": \"${STATUS}\"
+            }"
