@@ -3,7 +3,7 @@ name: Postman Scheduled Run v2
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
 
 jobs:
   run-postman:
