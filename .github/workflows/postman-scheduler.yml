@@ -42,6 +42,9 @@ jobs:
 
       - name: Notify Teams
         run: |
-          curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
-          -H "Content-Type: application/json" \
-          -d '{"text":"GitHub Action Test Message"}'
+           response=$(curl -s -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+           -H "Content-Type: application/json" \
+           -d '{"text":"GitHub Action Test Message"}')
+
+           echo "Teams response:"
+           echo "$response"
