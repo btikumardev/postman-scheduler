@@ -49,11 +49,42 @@ jobs:
         if: always()
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          NEWMAN_RESULT: ${{ steps.newman.outcome }}
         run: |
           if [ -z "$TEAMS_WEBHOOK_URL" ]; then
-            echo "TEAMS_WEBHOOK_URL not set, skipping"
-            exit 0
+            echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
+            exit 1
           fi
-          curl -f -sS -X POST "$TEAMS_WEBHOOK_URL" \
+
+          if [ "$NEWMAN_RESULT" = "success" ]; then
+            STATUS="Passed"
+            COLOR="00FF00"
+          else
+            STATUS="Failed"
+            COLOR="FF0000"
+          fi
+
+          PAYLOAD=$(cat <<EOF
+          {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": "Postman Run",
+            "themeColor": "${COLOR}",
+            "title": "Postman Scheduled Run",
+            "text": "Postman run ${STATUS} at $(date -u '+%Y-%m-%d %H:%M UTC')"
+          }
+          EOF
+          )
+
+          HTTP_CODE=$(curl -sS -w "%{http_code}" -o /tmp/teams_response.txt \
+            -X POST "$TEAMS_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d '{"text":"Postman scheduled run completed."}'
+            -d "$PAYLOAD")
+
+          echo "Teams HTTP status: $HTTP_CODE"
+          cat /tmp/teams_response.txt
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Teams notification failed!"
+            exit 1
+          fi
