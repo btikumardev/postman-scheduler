@@ -40,6 +40,14 @@ jobs:
           name: postman-report
           path: reports/report.html
 
+      - name: Check Secret
+        run: |
+              if [ -z "${{ secrets.TEAMS_WEBHOOK_URL }}" ]; then
+                echo "EMPTY"
+              else
+                echo "PRESENT"
+              fi
+
       - name: Notify Teams
         run: |
             curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
