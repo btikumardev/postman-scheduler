@@ -42,23 +42,22 @@ jobs:
           path: reports/report.html
 
       - name: Notify Teams
-        if: always() && secrets.TEAMS_WEBHOOK_URL != ''
+        if: always()
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
         run: |
-          if [ "${{ steps.newman.outcome }}" = "success" ]; then
-            STATUS="✅ Passed"
-            COLOR="00FF00"
-          else
-            STATUS="❌ Failed"
-            COLOR="FF0000"
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "TEAMS_WEBHOOK_URL not set, skipping notification"
+            exit 0
           fi
 
-          curl -f -sS -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+          curl -f -sS -X POST "$TEAMS_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"@type\": \"MessageCard\",
-              \"@context\": \"http://schema.org/extensions\",
-              \"summary\": \"Postman Run\",
-              \"themeColor\": \"${COLOR}\",
-              \"title\": \"Postman Scheduled Run\",
-              \"text\": \"${STATUS}\"
-            }"
+            -d '{
+              "@type": "MessageCard",
+              "@context": "http://schema.org/extensions",
+              "summary": "Postman Run",
+              "themeColor": "0076D7",
+              "title": "Postman Scheduled Run",
+              "text": "Postman scheduled run completed."
+            }'
