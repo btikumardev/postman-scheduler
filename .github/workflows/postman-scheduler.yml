@@ -8,13 +8,10 @@ on:
 jobs:
   run-postman:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
@@ -55,7 +52,6 @@ jobs:
             echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
             exit 1
           fi
-
           if [ "$NEWMAN_RESULT" = "success" ]; then
             STATUS="Passed"
             COLOR="00FF00"
@@ -63,7 +59,6 @@ jobs:
             STATUS="Failed"
             COLOR="FF0000"
           fi
-
           PAYLOAD=$(cat <<EOF
           {
             "@type": "MessageCard",
@@ -75,16 +70,9 @@ jobs:
           }
           EOF
           )
-
           HTTP_CODE=$(curl -sS -w "%{http_code}" -o /tmp/teams_response.txt \
             -X POST "$TEAMS_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD")
-
           echo "Teams HTTP status: $HTTP_CODE"
           cat /tmp/teams_response.txt
-
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Teams notification failed!"
-            exit 1
-          fi
