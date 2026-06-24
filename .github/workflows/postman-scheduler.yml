@@ -42,6 +42,13 @@ jobs:
 
       - name: Notify Teams
         run: |
-          curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
-          -H "Content-Type: application/json" \
-          -d '{"text":"GitHub Action Test Message"}'
+            curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "@type": "MessageCard",
+              "@context": "http://schema.org/extensions",
+              "summary": "GitHub Actions",
+              "themeColor": "0076D7",
+              "title": "Postman Scheduled Run",
+              "text": "✅ GitHub Action Test Message"
+                }'
