@@ -2,7 +2,7 @@ name: Postman Scheduled Run
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '30 2 * * *'
   workflow_dispatch:
   
 jobs:
