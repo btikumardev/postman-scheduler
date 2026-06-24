@@ -1,8 +1,8 @@
 name: Postman Scheduled Run
 
 on:
-   workflow_dispatch:
-   schedule:
+  workflow_dispatch:
+  schedule:
     - cron: '*/5 * * * *'
 
 jobs:
@@ -27,7 +27,6 @@ jobs:
         run: mkdir -p reports
 
       - name: Run Postman Collection
-        id: newman
         continue-on-error: true
         run: |
           newman run "LogIn.postman_collection.json" \
@@ -41,17 +40,8 @@ jobs:
           name: postman-report
           path: reports/report.html
 
-      - name: Notify Teams - Success
-        if: success()
+      - name: Notify Teams
         run: |
-          curl -H "Content-Type: application/json" \
-          -d '{"text":"✅ Postman Scheduled Run completed successfully.\nHTML report has been uploaded as artifact."}' \
-          "${{ secrets.TEAMS_WEBHOOK_URL }}"
-
-      - name: Notify Teams - Failure
-        if: failure()
-        run: |
-          curl -H "Content-Type: application/json" \
-          -d '{"text":"❌ Postman Scheduled Run failed. Please check GitHub Actions logs."}' \
-          "${{ secrets.TEAMS_WEBHOOK_URL }}"
-
+          curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d '{"text":"GitHub Action Test Message"}'
