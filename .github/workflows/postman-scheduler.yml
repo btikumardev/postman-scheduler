@@ -31,7 +31,7 @@ jobs:
         continue-on-error: true
         run: |
           newman run "LogIn.postman_collection.json" \
-            -e "EINO Testing ENV.postman_environment.json" \
+            -e "EINO_Testing_ENV.postman_environment.json" \
             -r cli,htmlextra \
             --reporter-htmlextra-export reports/report.html
 
