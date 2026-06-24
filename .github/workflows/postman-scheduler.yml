@@ -52,19 +52,7 @@ jobs:
         if: always()
         run: |
           STATUS="${{ job.status }}"
-          MESSAGE="📌 Postman Scheduled Run
-
-          Status: $STATUS
-          Repository: ${{ github.repository }}
-          Workflow: ${{ github.workflow }}
-          Run Number: ${{ github.run_number }}
-
-          View Run:
-          https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          HTML Report Artifact:
-          https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
           curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
             -H "Content-Type: application/json" \
-            --data "$(jq -n --arg text "$MESSAGE" '{text: $text}')"
+            -d "{\"text\":\"📌 Postman Scheduled Run | Status: $STATUS | Repository: ${{ github.repository }} | Workflow: ${{ github.workflow }} | Run Number: ${{ github.run_number }} | View Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
