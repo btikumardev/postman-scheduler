@@ -1,4 +1,4 @@
-name: Postman Scheduled Run v2
+name: Postman Scheduled Run
 
 on:
   workflow_dispatch:
@@ -19,11 +19,15 @@ jobs:
           node-version: '20'
 
       - name: Install Newman
-        run: |
-          npm install -g newman newman-reporter-htmlextra
+        run: npm install -g newman newman-reporter-htmlextra
 
       - name: Create reports directory
         run: mkdir -p reports
+
+      - name: Debug trigger
+        run: |
+          echo "Event = ${{ github.event_name }}"
+          echo "UTC time = $(date -u)"
 
       - name: Run Postman Collection
         id: newman
@@ -47,17 +51,9 @@ jobs:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
         run: |
           if [ -z "$TEAMS_WEBHOOK_URL" ]; then
-            echo "TEAMS_WEBHOOK_URL not set, skipping notification"
+            echo "TEAMS_WEBHOOK_URL not set, skipping"
             exit 0
           fi
-
           curl -f -sS -X POST "$TEAMS_WEBHOOK_URL" \
             -H "Content-Type: application/json" \
-            -d '{
-              "@type": "MessageCard",
-              "@context": "http://schema.org/extensions",
-              "summary": "Postman Run",
-              "themeColor": "0076D7",
-              "title": "Postman Scheduled Run",
-              "text": "Postman scheduled run completed."
-            }'
+            -d '{"text":"Postman scheduled run completed."}'
