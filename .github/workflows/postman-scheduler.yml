@@ -1,4 +1,4 @@
-name: Postman Scheduled Run
+name: Postman Scheduled Run v2
 
 on:
   workflow_dispatch:
