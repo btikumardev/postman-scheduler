@@ -51,8 +51,6 @@ jobs:
       - name: Notify Teams
         if: always()
         run: |
-          STATUS="${{ job.status }}"
-
           curl -X POST "${{ secrets.TEAMS_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"text\":\"📌 Postman Scheduled Run | Status: $STATUS | Repository: ${{ github.repository }} | Workflow: ${{ github.workflow }} | Run Number: ${{ github.run_number }} | View Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+          -H "Content-Type: application/json" \
+          -d '{"text":"GitHub Action Test Message"}'
