@@ -44,8 +44,24 @@ jobs:
         continue-on-error: true
         run: |
           set +e
-          newman run "Tags.postman_collection.json" \
+          mkdir -p reports
+
+          echo "=== Step 1: Login ==="
+          newman run "LogIn.postman_collection.json" \
             -e "EINO_Testing_ENV.postman_environment.json" \
+            --export-environment "reports/env.after-login.json" \
+            -r cli > reports/login.log 2>&1
+          LOGIN_CODE=$?
+          cat reports/login.log
+
+          if [ $LOGIN_CODE -ne 0 ]; then
+            echo "Login collection failed"
+            exit $LOGIN_CODE
+          fi
+
+          echo "=== Step 2: Tags (create_tag) ==="
+          newman run "Tags.postman_collection.json" \
+            -e "reports/env.after-login.json" \
             -r cli,json,htmlextra \
             --reporter-json-export reports/report.json \
             --reporter-htmlextra-export reports/report.html \
