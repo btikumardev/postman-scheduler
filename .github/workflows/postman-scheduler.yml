@@ -1,4 +1,4 @@
-name: Postman Scheduled Run
+name: Sign-in 
 
 on:
   schedule:
@@ -162,7 +162,7 @@ jobs:
               "@context": "https://schema.org/extensions",
               "summary": "Postman Collection Execution",
               "themeColor": $color,
-              "title": "Postman Collection Execution Report",
+              "title": "Sign-in Collection Execution Report",
               "sections": [
                 {
                   "facts": [
