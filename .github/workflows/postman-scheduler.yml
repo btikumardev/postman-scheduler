@@ -1,143 +1,131 @@
 name: Postman Scheduled Run
 
 on:
-schedule:
-- cron: '30 2 * * *'
-workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
 
 jobs:
-run-postman:
-runs-on: ubuntu-latest
+  run-postman:
+    runs-on: ubuntu-latest
 
-```
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-  - name: Setup Node.js
-    uses: actions/setup-node@v4
-    with:
-      node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-  - name: Install Newman and Reporters
-    run: |
-      npm install -g newman
-      npm install -g newman-reporter-htmlextra
+      - name: Install Newman and Reporters
+        run: |
+          npm install -g newman newman-reporter-htmlextra
 
-  - name: Install jq
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y jq
+      - name: Install jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
-  - name: Create Reports Directory
-    run: mkdir -p reports
+      - name: Create Reports Directory
+        run: mkdir -p reports
 
-  - name: Debug Trigger
-    run: |
-      echo "Event = ${{ github.event_name }}"
-      echo "UTC Time = $(date -u)"
+      - name: Debug Trigger
+        run: |
+          echo "Event = ${{ github.event_name }}"
+          echo "UTC Time = $(date -u)"
 
-  - name: Run Postman Collection
-    id: newman
-    continue-on-error: true
-    run: |
-      newman run "LogIn.postman_collection.json" \
-        -e "EINO_Testing_ENV.postman_environment.json" \
-        -r cli,json,htmlextra \
-        --reporter-json-export reports/report.json \
-        --reporter-htmlextra-export reports/report.html
+      - name: Run Postman Collection
+        id: newman
+        continue-on-error: true
+        run: |
+          newman run "LogIn.postman_collection.json" \
+            -e "EINO Testing ENV.postman_environment.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export reports/report.json \
+            --reporter-htmlextra-export reports/report.html
 
-  - name: Parse Newman Results
-    if: always()
-    run: |
-      TOTAL=$(jq '.run.stats.requests.total // 0' reports/report.json)
-      FAILED=$(jq '.run.failures | length' reports/report.json)
-      PASSED=$((TOTAL - FAILED))
+      - name: Parse Newman Results
+        if: always()
+        run: |
+          if [ ! -f reports/report.json ]; then
+            echo "TOTAL=0" >> "$GITHUB_ENV"
+            echo "PASSED=0" >> "$GITHUB_ENV"
+            echo "FAILED=0" >> "$GITHUB_ENV"
+            echo "FAILED_APIS=Report not generated" >> "$GITHUB_ENV"
+            exit 0
+          fi
 
-      FAILED_APIS=$(jq -r '.run.failures[].source.name' reports/report.json 2>/dev/null | sort -u | paste -sd ", " -)
+          TOTAL=$(jq '.run.stats.requests.total // 0' reports/report.json)
+          FAILED=$(jq '.run.failures | length' reports/report.json)
+          PASSED=$((TOTAL - FAILED))
 
-      if [ -z "$FAILED_APIS" ]; then
-        FAILED_APIS="None"
-      fi
+          FAILED_APIS=$(jq -r '.run.failures[].source.name' reports/report.json 2>/dev/null | sort -u | paste -sd ", " -)
+          if [ -z "$FAILED_APIS" ]; then
+            FAILED_APIS="None"
+          fi
 
-      echo "TOTAL=$TOTAL" >> $GITHUB_ENV
-      echo "PASSED=$PASSED" >> $GITHUB_ENV
-      echo "FAILED=$FAILED" >> $GITHUB_ENV
-      echo "FAILED_APIS=$FAILED_APIS" >> $GITHUB_ENV
+          echo "TOTAL=$TOTAL" >> "$GITHUB_ENV"
+          echo "PASSED=$PASSED" >> "$GITHUB_ENV"
+          echo "FAILED=$FAILED" >> "$GITHUB_ENV"
+          echo "FAILED_APIS=$FAILED_APIS" >> "$GITHUB_ENV"
 
-  - name: Upload HTML Report
-    if: always()
-    uses: actions/upload-artifact@v4
-    with:
-      name: postman-report
-      path: reports/report.html
+      - name: Upload HTML Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postman-report
+          path: reports/report.html
 
-  - name: Notify Teams
-    if: always()
-    env:
-      TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-      NEWMAN_RESULT: ${{ steps.newman.outcome }}
-    run: |
-      if [ -z "$TEAMS_WEBHOOK_URL" ]; then
-        echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
-        exit 1
-      fi
+      - name: Notify Teams
+        if: always()
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          NEWMAN_RESULT: ${{ steps.newman.outcome }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
+            exit 1
+          fi
 
-      if [ "$NEWMAN_RESULT" = "success" ]; then
-        STATUS="PASSED ✅"
-        COLOR="00FF00"
-      else
-        STATUS="FAILED ❌"
-        COLOR="FF0000"
-      fi
+          if [ "$NEWMAN_RESULT" = "success" ]; then
+            STATUS="PASSED"
+            COLOR="00FF00"
+          else
+            STATUS="FAILED"
+            COLOR="FF0000"
+          fi
 
-      EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
+          EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
 
-      cat > payload.json <<EOF
-      {
-        "@type": "MessageCard",
-        "@context": "https://schema.org/extensions",
-        "summary": "Postman Collection Execution",
-        "themeColor": "${COLOR}",
-        "title": "Postman Collection Execution Report",
-        "sections": [
+          cat > payload.json <<EOF
           {
-            "facts": [
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "summary": "Postman Collection Execution",
+            "themeColor": "${COLOR}",
+            "title": "Postman Collection Execution Report",
+            "sections": [
               {
-                "name": "Status",
-                "value": "${STATUS}"
-              },
-              {
-                "name": "Total APIs",
-                "value": "${TOTAL}"
-              },
-              {
-                "name": "Passed APIs",
-                "value": "${PASSED}"
-              },
-              {
-                "name": "Failed APIs",
-                "value": "${FAILED}"
-              },
-              {
-                "name": "Failed API Names",
-                "value": "${FAILED_APIS}"
-              },
-              {
-                "name": "Execution Time",
-                "value": "${EXECUTION_TIME}"
+                "facts": [
+                  { "name": "Status", "value": "${STATUS}" },
+                  { "name": "Total APIs", "value": "${TOTAL}" },
+                  { "name": "Passed APIs", "value": "${PASSED}" },
+                  { "name": "Failed APIs", "value": "${FAILED}" },
+                  { "name": "Failed API Names", "value": "${FAILED_APIS}" },
+                  { "name": "Execution Time", "value": "${EXECUTION_TIME}" }
+                ],
+                "markdown": true
               }
-            ],
-            "markdown": true
+            ]
           }
-        ]
-      }
-      EOF
+          EOF
 
-      curl -X POST \
-        -H "Content-Type: application/json" \
-        --data @payload.json \
-        "$TEAMS_WEBHOOK_URL"
+          HTTP_CODE=$(curl -sS -w "%{http_code}" -o /tmp/teams_response.txt \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$TEAMS_WEBHOOK_URL")
 
-      echo "Teams notification sent successfully."
-```
+          echo "Teams HTTP status: $HTTP_CODE"
+          cat /tmp/teams_response.txt
