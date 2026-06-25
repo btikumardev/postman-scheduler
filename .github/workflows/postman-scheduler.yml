@@ -53,7 +53,7 @@ jobs:
           EXIT_CODE=$?
           echo "Newman exit code: $EXIT_CODE"
           cat reports/newman.log
-          exit 0
+          exit $EXIT_CODE
 
       - name: Parse Newman Results
         if: always()
@@ -67,26 +67,63 @@ jobs:
             echo "PASSED=0" >> "$GITHUB_ENV"
             echo "FAILED=0" >> "$GITHUB_ENV"
             echo "FAILED_APIS=${ERROR_MSG}" >> "$GITHUB_ENV"
-            exit 0
+            echo "STATUS=FAILED" >> "$GITHUB_ENV"
+          else
+            # Total = number of API requests executed
+            TOTAL=$(jq '.run.stats.requests.total // 0' reports/report.json)
+
+            # Count UNIQUE failed APIs (not assertion count)
+            FAILED=$(jq '[.run.failures[].source.name] | unique | length' reports/report.json)
+            PASSED=$((TOTAL - FAILED))
+
+            FAILED_APIS=$(jq -r '[.run.failures[].source.name] | unique | .[]' reports/report.json 2>/dev/null | paste -sd ", " -)
+            if [ -z "$FAILED_APIS" ]; then
+              FAILED_APIS="None"
+            fi
+
+            if [ "$TOTAL" -gt 0 ] && [ "$FAILED" -eq 0 ]; then
+              STATUS="PASSED"
+            else
+              STATUS="FAILED"
+            fi
+
+            echo "TOTAL=$TOTAL" >> "$GITHUB_ENV"
+            echo "PASSED=$PASSED" >> "$GITHUB_ENV"
+            echo "FAILED=$FAILED" >> "$GITHUB_ENV"
+            echo "FAILED_APIS=$FAILED_APIS" >> "$GITHUB_ENV"
+            echo "STATUS=$STATUS" >> "$GITHUB_ENV"
+
+            echo "Parsed results:"
+            echo "STATUS=$STATUS TOTAL=$TOTAL PASSED=$PASSED FAILED=$FAILED"
+            echo "FAILED_APIS=$FAILED_APIS"
           fi
 
-          TOTAL=$(jq '.run.stats.requests.total // 0' reports/report.json)
-          FAILED=$(jq '.run.failures | length' reports/report.json)
-          PASSED=$((TOTAL - FAILED))
+          echo "EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
 
-          FAILED_APIS=$(jq -r '.run.failures[].source.name' reports/report.json 2>/dev/null | sort -u | paste -sd ", " -)
-          if [ -z "$FAILED_APIS" ]; then
-            FAILED_APIS="None"
+      - name: Build Email Body
+        if: always()
+        run: |
+          if [ ! -f reports/report.html ]; then
+            echo "<p>HTML report was not generated.</p>" > reports/report.html
           fi
 
-          echo "TOTAL=$TOTAL" >> "$GITHUB_ENV"
-          echo "PASSED=$PASSED" >> "$GITHUB_ENV"
-          echo "FAILED=$FAILED" >> "$GITHUB_ENV"
-          echo "FAILED_APIS=$FAILED_APIS" >> "$GITHUB_ENV"
-
-          echo "Parsed results:"
-          echo "TOTAL=$TOTAL PASSED=$PASSED FAILED=$FAILED"
-          echo "FAILED_APIS=$FAILED_APIS"
+          cat > reports/email_body.html <<EOF
+          <html>
+            <body style="font-family: Arial, sans-serif;">
+              <h2>Postman Collection Execution Report</h2>
+              <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
+                <tr><td><b>Status</b></td><td>${STATUS}</td></tr>
+                <tr><td><b>Total APIs</b></td><td>${TOTAL}</td></tr>
+                <tr><td><b>Passed APIs</b></td><td>${PASSED}</td></tr>
+                <tr><td><b>Failed APIs</b></td><td>${FAILED}</td></tr>
+                <tr><td><b>Failed API Names</b></td><td>${FAILED_APIS}</td></tr>
+                <tr><td><b>Execution Time</b></td><td>${EXECUTION_TIME}</td></tr>
+                <tr><td><b>Trigger</b></td><td>${{ github.event_name }}</td></tr>
+              </table>
+              <p>HTML report is attached when available.</p>
+            </body>
+          </html>
+          EOF
 
       - name: Upload HTML Report
         if: always()
@@ -100,22 +137,17 @@ jobs:
         if: always()
         env:
           TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
-          NEWMAN_RESULT: ${{ steps.newman.outcome }}
         run: |
           if [ -z "$TEAMS_WEBHOOK_URL" ]; then
             echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
             exit 1
           fi
 
-          if [ "${NEWMAN_RESULT}" = "success" ] && [ "${TOTAL}" != "0" ]; then
-            STATUS="PASSED"
+          if [ "$STATUS" = "PASSED" ]; then
             COLOR="00FF00"
           else
-            STATUS="FAILED"
             COLOR="FF0000"
           fi
-
-          EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
 
           jq -n \
             --arg status "$STATUS" \
@@ -154,3 +186,18 @@ jobs:
 
           echo "Teams HTTP status: $HTTP_CODE"
           cat /tmp/teams_response.txt
+
+      - name: Send Email to Team (Outlook)
+        if: always()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.office365.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: Postman Run - ${{ env.STATUS }} - ${{ env.EXECUTION_TIME }}
+          to: btikumatdev@barytech.com, btivandavasira@barytech.com, pshikare@barytech.com, btiaditya@barytech.com
+          from: ${{ secrets.SMTP_USERNAME }}
+          html_body: file://reports/email_body.html
+          attachments: reports/report.html
