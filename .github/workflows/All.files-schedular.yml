@@ -43,34 +43,46 @@ jobs:
         id: newman
         continue-on-error: true
         run: |
-          set +e
+          set -e
           mkdir -p reports
 
           echo "=== Step 1: Login ==="
           newman run "LogIn.postman_collection.json" \
             -e "EINO_Testing_ENV.postman_environment.json" \
             --export-environment "reports/env.after-login.json" \
-            -r cli > reports/login.log 2>&1
-          LOGIN_CODE=$?
+            -r cli > reports/login.log 2>&1 || LOGIN_CODE=$?
+          LOGIN_CODE=${LOGIN_CODE:-0}
           cat reports/login.log
 
-          if [ $LOGIN_CODE -ne 0 ]; then
-            echo "Login collection failed"
-            exit $LOGIN_CODE
+          if [ "$LOGIN_CODE" -ne 0 ]; then
+            echo "Login collection failed with exit code $LOGIN_CODE"
+            cp reports/login.log reports/newman.log
+            exit "$LOGIN_CODE"
           fi
 
-          echo "=== Step 2: Tags (create_tag) ==="
+          # All.Files uses {{Department_Id}} but login sets Department_id — fix case mismatch
+          DEPT_ID=$(jq -r '.values[] | select(.key=="Department_id") | .value' reports/env.after-login.json)
+          if [ -n "$DEPT_ID" ] && [ "$DEPT_ID" != "null" ]; then
+            jq --arg dept "$DEPT_ID" \
+              '.values = (.values | map(select(.key != "Department_Id"))) + [{"key":"Department_Id","value":$dept,"type":"default","enabled":true}]' \
+              reports/env.after-login.json > reports/env.fixed.json
+            mv reports/env.fixed.json reports/env.after-login.json
+            echo "Added Department_Id=$DEPT_ID to exported environment"
+          else
+            echo "WARNING: Department_id not found after login"
+          fi
+
+          echo "=== Step 2: All Files APIs ==="
           newman run "All.Files.postman_collection.json" \
             -e "reports/env.after-login.json" \
             -r cli,json,htmlextra \
             --reporter-json-export reports/report.json \
             --reporter-htmlextra-export reports/report.html \
-            > reports/newman.log 2>&1
-          EXIT_CODE=$?
+            > reports/newman.log 2>&1 || EXIT_CODE=$?
+          EXIT_CODE=${EXIT_CODE:-0}
           echo "Newman exit code: $EXIT_CODE"
           cat reports/newman.log
-          exit $EXIT_CODE
-
+          exit "$EXIT_CODE"
       - name: Parse Newman Results
         if: always()
         run: |
