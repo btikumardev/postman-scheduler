@@ -178,7 +178,7 @@ jobs:
               "@context": "https://schema.org/extensions",
               "summary": "Postman Collection Execution",
               "themeColor": $color,
-              "title": "Tags Collection Execution Report",
+              "title": "All.Files Collection Execution Report",
               "sections": [
                 {
                   "facts": [
