@@ -1,0 +1,219 @@
+name: All Files
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-postman:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Newman and Reporters
+        run: npm install -g newman newman-reporter-htmlextra
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Verify required files
+        run: |
+          echo "Files in repo root:"
+          ls -la
+          test -f "All.Files.postman_collection.json" || (echo "Collection file missing!" && exit 1)
+          test -f "EINO_Testing_ENV.postman_environment.json" || (echo "Environment file missing!" && exit 1)
+
+      - name: Create Reports Directory
+        run: mkdir -p reports
+
+      - name: Debug Trigger
+        run: |
+          echo "Event = ${{ github.event_name }}"
+          echo "UTC Time = $(date -u)"
+
+      - name: Run Postman Collection
+        id: newman
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p reports
+
+          echo "=== Step 1: Login ==="
+          newman run "LogIn.postman_collection.json" \
+            -e "EINO_Testing_ENV.postman_environment.json" \
+            --export-environment "reports/env.after-login.json" \
+            -r cli > reports/login.log 2>&1
+          LOGIN_CODE=$?
+          cat reports/login.log
+
+          if [ $LOGIN_CODE -ne 0 ]; then
+            echo "Login collection failed"
+            exit $LOGIN_CODE
+          fi
+
+          echo "=== Step 2: Tags (create_tag) ==="
+          newman run "All.Files.postman_collection.json" \
+            -e "reports/env.after-login.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export reports/report.json \
+            --reporter-htmlextra-export reports/report.html \
+            > reports/newman.log 2>&1
+          EXIT_CODE=$?
+          echo "Newman exit code: $EXIT_CODE"
+          cat reports/newman.log
+          exit $EXIT_CODE
+
+      - name: Parse Newman Results
+        if: always()
+        run: |
+          if [ ! -f reports/report.json ]; then
+            ERROR_MSG="Newman did not create report.json"
+            if [ -f reports/newman.log ]; then
+              ERROR_MSG=$(tail -n 5 reports/newman.log | tr '\n' ' ')
+            fi
+            echo "TOTAL=0" >> "$GITHUB_ENV"
+            echo "PASSED=0" >> "$GITHUB_ENV"
+            echo "FAILED=0" >> "$GITHUB_ENV"
+            echo "FAILED_APIS=${ERROR_MSG}" >> "$GITHUB_ENV"
+            echo "STATUS=FAILED" >> "$GITHUB_ENV"
+          else
+            # Total = number of API requests executed
+            TOTAL=$(jq '.run.stats.requests.total // 0' reports/report.json)
+
+            # Count UNIQUE failed APIs (not assertion count)
+            FAILED=$(jq '[.run.failures[].source.name] | unique | length' reports/report.json)
+            PASSED=$((TOTAL - FAILED))
+
+            FAILED_APIS=$(jq -r '[.run.failures[].source.name] | unique | .[]' reports/report.json 2>/dev/null | paste -sd ", " -)
+            if [ -z "$FAILED_APIS" ]; then
+              FAILED_APIS="None"
+            fi
+
+            if [ "$TOTAL" -gt 0 ] && [ "$FAILED" -eq 0 ]; then
+              STATUS="PASSED"
+            else
+              STATUS="FAILED"
+            fi
+
+            echo "TOTAL=$TOTAL" >> "$GITHUB_ENV"
+            echo "PASSED=$PASSED" >> "$GITHUB_ENV"
+            echo "FAILED=$FAILED" >> "$GITHUB_ENV"
+            echo "FAILED_APIS=$FAILED_APIS" >> "$GITHUB_ENV"
+            echo "STATUS=$STATUS" >> "$GITHUB_ENV"
+
+            echo "Parsed results:"
+            echo "STATUS=$STATUS TOTAL=$TOTAL PASSED=$PASSED FAILED=$FAILED"
+            echo "FAILED_APIS=$FAILED_APIS"
+          fi
+
+          echo "EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+
+      - name: Build Email Body
+        if: always()
+        run: |
+          if [ ! -f reports/report.html ]; then
+            echo "<p>HTML report was not generated.</p>" > reports/report.html
+          fi
+
+          cat > reports/email_body.html <<EOF
+          <html>
+            <body style="font-family: Arial, sans-serif;">
+              <h2>Postman Collection Execution Report</h2>
+              <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse;">
+                <tr><td><b>Status</b></td><td>${STATUS}</td></tr>
+                <tr><td><b>Total APIs</b></td><td>${TOTAL}</td></tr>
+                <tr><td><b>Passed APIs</b></td><td>${PASSED}</td></tr>
+                <tr><td><b>Failed APIs</b></td><td>${FAILED}</td></tr>
+                <tr><td><b>Failed API Names</b></td><td>${FAILED_APIS}</td></tr>
+                <tr><td><b>Execution Time</b></td><td>${EXECUTION_TIME}</td></tr>
+                <tr><td><b>Trigger</b></td><td>${{ github.event_name }}</td></tr>
+              </table>
+              <p>HTML report is attached when available.</p>
+            </body>
+          </html>
+          EOF
+
+      - name: Upload HTML Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postman-report
+          path: reports/report.html
+          if-no-files-found: ignore
+
+      - name: Notify Teams
+        if: always()
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "ERROR: TEAMS_WEBHOOK_URL secret is not set!"
+            exit 1
+          fi
+
+          if [ "$STATUS" = "PASSED" ]; then
+            COLOR="00FF00"
+          else
+            COLOR="FF0000"
+          fi
+
+          jq -n \
+            --arg status "$STATUS" \
+            --arg color "$COLOR" \
+            --arg total "${TOTAL:-0}" \
+            --arg passed "${PASSED:-0}" \
+            --arg failed "${FAILED:-0}" \
+            --arg failedApis "${FAILED_APIS:-Unknown}" \
+            --arg time "$EXECUTION_TIME" \
+            '{
+              "@type": "MessageCard",
+              "@context": "https://schema.org/extensions",
+              "summary": "Postman Collection Execution",
+              "themeColor": $color,
+              "title": "Tags Collection Execution Report",
+              "sections": [
+                {
+                  "facts": [
+                    { "name": "Status", "value": $status },
+                    { "name": "Total APIs", "value": $total },
+                    { "name": "Passed APIs", "value": $passed },
+                    { "name": "Failed APIs", "value": $failed },
+                    { "name": "Failed API Names", "value": $failedApis },
+                    { "name": "Execution Time", "value": $time }
+                  ],
+                  "markdown": true
+                }
+              ]
+            }' > payload.json
+
+          HTTP_CODE=$(curl -sS -w "%{http_code}" -o /tmp/teams_response.txt \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$TEAMS_WEBHOOK_URL")
+
+          echo "Teams HTTP status: $HTTP_CODE"
+          cat /tmp/teams_response.txt
+
+      - name: Send Email to Team (Outlook)
+        if: always()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.office365.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: Postman Run - ${{ env.STATUS }} - ${{ env.EXECUTION_TIME }}
+          to: btikumatdev@barytech.com, btivandavasira@barytech.com, pshikare@barytech.com, btiaditya@barytech.com
+          from: ${{ secrets.SMTP_USERNAME }}
+          html_body: file://reports/email_body.html
+          attachments: reports/report.html
