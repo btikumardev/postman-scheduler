@@ -1,0 +1,347 @@
+name: EINO Combined API Report
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours (adjust as needed)
+  workflow_dispatch:
+
+jobs:
+  combined-api-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Newman and Reporters
+        run: npm install -g newman newman-reporter-htmlextra
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Verify required files
+        run: |
+          echo "Files in repo root:"
+          ls -la
+          test -f "LogIn.postman_collection.json" || (echo "Missing: LogIn.postman_collection.json" && exit 1)
+          test -f "Tags.postman_collection.json" || (echo "Missing: Tags.postman_collection.json" && exit 1)
+          test -f "All.Files.postman_collection.json" || (echo "Missing: All.Files.postman_collection.json" && exit 1)
+          test -f "Dashboard.postman_collection.json" || (echo "Missing: Dashboard.postman_collection.json" && exit 1)
+          test -f "EINO_Testing_ENV.postman_environment.json" || (echo "Missing: EINO_Testing_ENV.postman_environment.json" && exit 1)
+
+      - name: Create Reports Directory
+        run: mkdir -p reports/partials
+
+      - name: Run LogIn Collection
+        id: run_login
+        continue-on-error: true
+        run: |
+          set +e
+          newman run "LogIn.postman_collection.json" \
+            -e "EINO_Testing_ENV.postman_environment.json" \
+            --folder "Eino Sign In using username & password" \
+            --export-environment "reports/runtime-env.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export "reports/partials/login.json" \
+            --reporter-htmlextra-export "reports/partials/login.html" \
+            --reporter-htmlextra-title "LogIn Collection" \
+            > reports/partials/login.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat reports/partials/login.log
+
+      - name: Sync environment variables after login
+        run: |
+          if [ ! -f reports/runtime-env.json ]; then
+            echo "Login did not export runtime-env.json"
+            exit 1
+          fi
+
+          DEPT_ID=$(jq -r '.values[] | select(.key=="department_id" or .key=="Department_id" or .key=="Department_Id") | .value' reports/runtime-env.json | head -n 1)
+          TENANT_ID=$(jq -r '.values[] | select(.key=="company_id" or .key=="X-Tenant-Id") | .value' reports/runtime-env.json | head -n 1)
+
+          jq --arg dept "$DEPT_ID" --arg tenant "$TENANT_ID" '
+            .values = (
+              (.values | map(select(.key != "Department_id" and .key != "Department_Id" and .key != "X-Tenant-Id")))
+              + [
+                  {"key":"Department_id","value":$dept,"type":"default","enabled":true},
+                  {"key":"Department_Id","value":$dept,"type":"default","enabled":true},
+                  {"key":"X-Tenant-Id","value":$tenant,"type":"default","enabled":true}
+                ]
+            )
+          ' reports/runtime-env.json > reports/runtime-env.final.json
+
+          mv reports/runtime-env.final.json reports/runtime-env.json
+
+      - name: Run Tags Collection
+        id: run_tags
+        continue-on-error: true
+        run: |
+          set +e
+          newman run "Tags.postman_collection.json" \
+            -e "reports/runtime-env.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export "reports/partials/tags.json" \
+            --reporter-htmlextra-export "reports/partials/tags.html" \
+            --reporter-htmlextra-title "Tags Collection" \
+            > reports/partials/tags.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat reports/partials/tags.log
+
+      - name: Run All Files Collection
+        id: run_all_files
+        continue-on-error: true
+        run: |
+          set +e
+          newman run "All.Files.postman_collection.json" \
+            -e "reports/runtime-env.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export "reports/partials/all-files.json" \
+            --reporter-htmlextra-export "reports/partials/all-files.html" \
+            --reporter-htmlextra-title "All Files Collection" \
+            > reports/partials/all-files.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat reports/partials/all-files.log
+
+      - name: Run Dashboard Collection
+        id: run_dashboard
+        continue-on-error: true
+        run: |
+          set +e
+          newman run "Dashboard.postman_collection.json" \
+            -e "reports/runtime-env.json" \
+            -r cli,json,htmlextra \
+            --reporter-json-export "reports/partials/dashboard.json" \
+            --reporter-htmlextra-export "reports/partials/dashboard.html" \
+            --reporter-htmlextra-title "Dashboard Collection" \
+            > reports/partials/dashboard.log 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat reports/partials/dashboard.log
+
+      - name: Merge all Newman JSON reports into one combined report
+        if: always()
+        run: |
+          JSON_FILES=$(find reports/partials -maxdepth 1 -name '*.json' -type f | sort)
+          if [ -z "$JSON_FILES" ]; then
+            echo "No partial JSON reports found."
+            exit 0
+          fi
+
+          jq -s '
+            def sum_field(path):
+              [ .[] | getpath(path) // 0 ] | add;
+
+            {
+              generated_at: (now | strftime("%Y-%m-%d %H:%M:%S UTC")),
+              collections: [ .[].collection.info.name ],
+              run: {
+                stats: {
+                  iterations: { total: sum_field(["run","stats","iterations","total"]) },
+                  items: { total: sum_field(["run","stats","items","total"]) },
+                  scripts: { total: sum_field(["run","stats","scripts","total"]) },
+                  prerequests: { total: sum_field(["run","stats","prerequests","total"]) },
+                  requests: { total: sum_field(["run","stats","requests","total"]) },
+                  tests: { total: sum_field(["run","stats","tests","total"]) },
+                  assertions: { total: sum_field(["run","stats","assertions","total"]) },
+                  testScripts: { total: sum_field(["run","stats","testScripts","total"]) },
+                  prerequestScripts: { total: sum_field(["run","stats","prerequestScripts","total"]) }
+                },
+                failures: (
+                  [ .[] as $report
+                    | ($report.collection.info.name) as $collection
+                    | ($report.run.failures // [])
+                    | .[]
+                    | . + { collection: $collection }
+                  ]
+                ),
+                executions: (
+                  [ .[] as $report
+                    | ($report.collection.info.name) as $collection
+                    | ($report.run.executions // [])
+                    | .[]
+                    | . + { collection: $collection }
+                  ]
+                )
+              }
+            }
+          ' $JSON_FILES > reports/combined-report.json
+
+          echo "Combined report created:"
+          jq '{collections, stats: .run.stats, failure_count: (.run.failures | length)}' reports/combined-report.json
+
+      - name: Build combined HTML report
+        if: always()
+        run: |
+          if [ ! -f reports/combined-report.json ]; then
+            echo "<html><body><h2>No combined report generated</h2></body></html>" > reports/combined-report.html
+            exit 0
+          fi
+
+          TOTAL=$(jq '.run.stats.requests.total // 0' reports/combined-report.json)
+          FAILED=$(jq '[.run.failures[].source.name] | unique | length' reports/combined-report.json)
+          PASSED=$((TOTAL - FAILED))
+
+          if [ "$TOTAL" -gt 0 ] && [ "$FAILED" -eq 0 ]; then
+            STATUS="PASSED"
+            STATUS_COLOR="#16a34a"
+          else
+            STATUS="FAILED"
+            STATUS_COLOR="#dc2626"
+          fi
+
+          COLLECTION_ROWS=$(jq -r '.collections[]' reports/combined-report.json | while read -r name; do
+            echo "<tr><td>${name}</td><td>Executed</td></tr>"
+          done)
+
+          FAILED_ROWS=$(jq -r '
+            .run.failures[]
+            | "<tr><td>\(.collection // "Unknown")</td><td>\(.source.name // "Unknown")</td><td>\(.error.test // .error.name // "Assertion failed")</td></tr>"
+          ' reports/combined-report.json)
+
+          if [ -z "$FAILED_ROWS" ]; then
+            FAILED_ROWS="<tr><td colspan=\"3\">None</td></tr>"
+          fi
+
+          cat > reports/combined-report.html <<EOF
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta charset="UTF-8" />
+              <title>EINO Combined API Report</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+                h1, h2 { margin-bottom: 12px; }
+                table { border-collapse: collapse; width: 100%; margin-bottom: 24px; }
+                th, td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; }
+                th { background: #f3f4f6; }
+                .status { font-size: 20px; font-weight: bold; color: ${STATUS_COLOR}; }
+                .links a { margin-right: 16px; }
+              </style>
+            </head>
+            <body>
+              <h1>EINO Combined API Report</h1>
+              <p class="status">Status: ${STATUS}</p>
+              <p><strong>Execution Time:</strong> $(date -u '+%Y-%m-%d %H:%M UTC')</p>
+
+              <h2>Summary</h2>
+              <table>
+                <tr><th>Total APIs</th><td>${TOTAL}</td></tr>
+                <tr><th>Passed APIs</th><td>${PASSED}</td></tr>
+                <tr><th>Failed APIs</th><td>${FAILED}</td></tr>
+              </table>
+
+              <h2>Collections Executed</h2>
+              <table>
+                <tr><th>Collection</th><th>Result</th></tr>
+                ${COLLECTION_ROWS}
+              </table>
+
+              <h2>Failed APIs</h2>
+              <table>
+                <tr><th>Collection</th><th>API Name</th><th>Failure</th></tr>
+                ${FAILED_ROWS}
+              </table>
+
+              <h2>Partial HTML Reports</h2>
+              <div class="links">
+                <a href="partials/login.html">LogIn</a>
+                <a href="partials/tags.html">Tags</a>
+                <a href="partials/all-files.html">All Files</a>
+                <a href="partials/dashboard.html">Dashboard</a>
+              </div>
+            </body>
+          </html>
+          EOF
+
+          echo "TOTAL=$TOTAL" >> "$GITHUB_ENV"
+          echo "PASSED=$PASSED" >> "$GITHUB_ENV"
+          echo "FAILED=$FAILED" >> "$GITHUB_ENV"
+          echo "STATUS=$STATUS" >> "$GITHUB_ENV"
+          echo "EXECUTION_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_ENV"
+
+          FAILED_APIS=$(jq -r '[.run.failures[] | "\(.collection): \(.source.name)"] | unique | .[]' reports/combined-report.json 2>/dev/null | paste -sd ", " -)
+          if [ -z "$FAILED_APIS" ]; then
+            FAILED_APIS="None"
+          fi
+          echo "FAILED_APIS=$FAILED_APIS" >> "$GITHUB_ENV"
+
+      - name: Upload combined report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eino-combined-api-report
+          path: |
+            reports/combined-report.html
+            reports/combined-report.json
+            reports/partials/
+          if-no-files-found: ignore
+
+      - name: Notify Teams
+        if: always()
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          if [ -z "$TEAMS_WEBHOOK_URL" ]; then
+            echo "TEAMS_WEBHOOK_URL secret is not set. Skipping Teams notification."
+            exit 0
+          fi
+
+          if [ "$STATUS" = "PASSED" ]; then
+            COLOR="00FF00"
+          else
+            COLOR="FF0000"
+          fi
+
+          jq -n \
+            --arg status "$STATUS" \
+            --arg color "$COLOR" \
+            --arg total "${TOTAL:-0}" \
+            --arg passed "${PASSED:-0}" \
+            --arg failed "${FAILED:-0}" \
+            --arg failedApis "${FAILED_APIS:-Unknown}" \
+            --arg time "$EXECUTION_TIME" \
+            '{
+              "@type": "MessageCard",
+              "@context": "https://schema.org/extensions",
+              "summary": "EINO Combined API Report",
+              "themeColor": $color,
+              "title": "EINO Combined API Report",
+              "sections": [
+                {
+                  "facts": [
+                    { "name": "Status", "value": $status },
+                    { "name": "Total APIs", "value": $total },
+                    { "name": "Passed APIs", "value": $passed },
+                    { "name": "Failed APIs", "value": $failed },
+                    { "name": "Failed API Names", "value": $failedApis },
+                    { "name": "Execution Time", "value": $time },
+                    { "name": "Collections", "value": "LogIn, Tags, All Files, Dashboard" }
+                  ],
+                  "markdown": true
+                }
+              ]
+            }' > payload.json
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            --data @payload.json \
+            "$TEAMS_WEBHOOK_URL"
+
+      - name: Fail workflow if any collection failed
+        if: always()
+        run: |
+          LOGIN_CODE="${{ steps.run_login.outputs.exit_code }}"
+          TAGS_CODE="${{ steps.run_tags.outputs.exit_code }}"
+          ALL_FILES_CODE="${{ steps.run_all_files.outputs.exit_code }}"
+          DASHBOARD_CODE="${{ steps.run_dashboard.outputs.exit_code }}"
+
+          echo "Exit codes => Login:$LOGIN_CODE Tags:$TAGS_CODE AllFiles:$ALL_FILES_CODE Dashboard:$DASHBOARD_CODE"
+
+          if [ "$LOGIN_CODE" != "0" ] || [ "$TAGS_CODE" != "0" ] || [ "$ALL_FILES_CODE" != "0" ] || [ "$DASHBOARD_CODE" != "0" ]; then
+            echo "One or more collections failed."
+            exit 1
+          fi
