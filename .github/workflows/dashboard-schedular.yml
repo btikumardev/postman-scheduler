@@ -1,4 +1,4 @@
-name: All Files
+name: Dashboard
 
 on:
   schedule:
@@ -190,7 +190,7 @@ jobs:
               "@context": "https://schema.org/extensions",
               "summary": "Postman Collection Execution",
               "themeColor": $color,
-              "title": "All.Files Collection Execution Report",
+              "title": "Dashboard Collection Execution Report",
               "sections": [
                 {
                   "facts": [
